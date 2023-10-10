@@ -1,0 +1,58 @@
+.quarto-title-block .quarto-title-banner {
+  background-image: url(logo.png) !important;
+  background-size: 150px !important;
+  background-position: left;
+  background-repeat: no-repeat;
+  padding-left: 10px;
+  background-origin: content-box;
+  border-bottom: #09309a 5px solid;
+}
+
+h1, .subtitle, .description {
+  color:black;  
+}
+
+body {
+  background-color: white;
+}
+
+.sourceCode {
+  background-color: #e8e6ef !important;
+  border-radius: 5px !important;
+}
+
+.sidebar nav[role="doc-toc"] ul > li > a.active,
+.sidebar nav[role="doc-toc"] ul > li > ul > li > a.active
+{
+  border-left: 1px solid #09309a;
+  color: #09309a !important;
+}
+
+.text-box {
+  font-family: Computer Modern;
+}
+
+.cell-output-display > p > img{ 
+  width: 100% !important;
+  border-radius: 5px !important;
+}
+
+
+.callout {
+  background: white;
+}
+
+.text-box {
+  background: white;
+  border-radius: 5px;
+  padding: 20px;
+}
+
+#quarto-document-content {
+  border-left: 2px dashed white;
+  padding-left: 15px;
+}
+
+.even {
+  background: white !important;
+}

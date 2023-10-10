@@ -1,0 +1,146 @@
+---
+title: "Social Networks and System Recomendations"
+subtitle: "Project 1: "
+author: "Bartosz Rożek"
+date: last-modified
+date-format: "DD-MM-YYYY"
+editor: visual
+title-block-banner: "#e8e6ef"
+page-layout: article
+css: Styles/styles.css
+format: 
+  html:
+    toc: true
+    smooth-scroll: true
+    embed-resources: true
+    fontcolor: black
+    toc-location: right
+    toc-title: Summary
+    toc-depth: 3
+    number-sections: true
+    number-depth: 4
+    code-fold: false
+    code-summary: "Code"
+tbl-cap-location: bottom
+---
+
+# Introduction
+
+All solution are based on creating adjacency matrix using R base package options and creating the graphs with **igraph** package.
+
+```{r message=F}
+library(igraph)
+```
+
+# Exercise 1
+
+Draw square lattice.
+
+```{r}
+
+lattice_graph <- function(nrow = 4, ncol = 5, quiet = F) {
+    n_elements <- nrow * ncol
+    
+    am <- matrix(data = 0,
+                 nrow = n_elements,
+                 ncol = n_elements)
+    
+    for (i in 1:(n_elements)) {
+        if (i %% ncol != 0) am[i,i + 1] <- 1
+        if (i + ncol <= n_elements) am[i,i + ncol] <- 1
+    }
+    
+    graph <- graph_from_adjacency_matrix(am, mode = "undirected")
+    V(graph)$label <- ""
+    
+    if (!quiet) {
+        graph |> plot()
+      }
+    return(graph)
+}
+
+lg <- lattice_graph(5, 8)
+```
+
+# Exercise 2
+
+Draw chain. This is the same function as in the previous exercise, but one of the arguments is equal to one.
+
+```{r}
+
+chain <- lattice_graph(1, 11)
+```
+
+# Exercise 3
+
+Draw complete graph.
+
+```{r}
+
+complete_graph <- function(n = 5, quiet = F) {
+    am <- matrix(data = 1,
+                 nrow = n,
+                 ncol = n) - diag(n)
+    graph <- graph_from_adjacency_matrix(am, mode = "undirected")
+    V(graph)$label <- ""
+    
+    if (!quiet) {
+        graph |> plot()
+    }
+    return(graph)
+}
+
+cg <- complete_graph(9)
+```
+
+# Exercise 4
+
+Draw weighted graph.
+
+```{r}
+
+random_weighted_graph <- function(n = 5, quiet = F) {
+    am <- matrix(data = runif(n ** 2, 0, 5),
+                 nrow = n,
+                 ncol = n)
+    diag(am) <- 0
+    
+    graph <- graph_from_adjacency_matrix(am, weighted = TRUE, mode = "undirected")
+    E(graph)$width <- E(graph)$weight + min(E(graph)$weight)
+    V(graph)$label <- ""
+    
+    if (!quiet) {
+        graph |> plot()
+    }
+    return(graph)
+}
+
+rwg <- random_weighted_graph(7)
+```
+
+Solution based on @ddiez answer for [stackoverflow question](https://stackoverflow.com/questions/21300821/igraph-creating-a-weighted-adjacency-matrix).
+
+# Exercise 5
+
+Draw directed graph.
+
+```{r}
+
+random_directed_graph <- function(n = 5, quiet = F) {
+    am <- matrix(data = runif(n ** 2, 0, 1),
+                 nrow = n,
+                 ncol = n)
+    diag(am) <- 0
+    am[am > 0.7] <- 1
+    am[am != 1] <- 0 
+    graph <- graph_from_adjacency_matrix(am, mode = "directed")
+    V(graph)$label <- ""
+    
+    if (!quiet) {
+        graph |> plot()
+    }
+    return(graph)
+}
+
+rdg <- random_directed_graph(6)
+```
