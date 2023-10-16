@@ -1,0 +1,197 @@
+---
+title: "Social Networks and System Recomendations"
+subtitle: "Project 2: "
+author: "Bartosz Rożek"
+date: last-modified
+date-format: "DD-MM-YYYY"
+editor: visual
+title-block-banner: "#e8e6ef"
+page-layout: article
+css: ../Styles/styles.css
+format: 
+  html:
+    toc: true
+    smooth-scroll: true
+    embed-resources: true
+    fontcolor: black
+    toc-location: right
+    toc-title: Summary
+    toc-depth: 3
+    number-sections: true
+    number-depth: 4
+    code-fold: false
+    code-summary: "Code"
+tbl-cap-location: bottom
+---
+
+# Introduction
+
+All solution are based on creating adjacency matrix using R base package options and creating the graphs with **igraph** package.
+
+```{r message=F}
+library(igraph)
+library(echarts4r)
+```
+
+# Data 1 - Game of thrones
+
+Place vertices on a circle, in the order of their vertex ids.
+
+
+```{r}
+
+
+data <- read.csv("asoiaf-book1-edges.csv")
+g <- graph_from_data_frame(data, directed = F, vertices = NULL)
+nodes_names <- table(data$Source)
+V(g)$label <-
+    ifelse(names(V(g)) %in% names(nodes_names)[nodes_names > 20], names(V(g)), "")
+V(g)$label <- ""
+deg <- degree(g, mode = "all")
+lay <- layout_in_circle(g)
+V(g)$label.cex = 1
+nodes_names[nodes_names > 10] |> sort(decreasing = T) |> print()
+hist(nodes_names) |> plot()
+plot(g, vertex.size = deg / 10, layout = lay)
+
+
+```
+
+```{r}
+nodes_names <- table(data$Source)
+edges <- data
+nodes <- data.frame(
+    name = names(nodes_names),
+    value = as.numeric(nodes_names),
+    size = as.numeric(nodes_names),
+    stringsAsFactors = FALSE
+)
+
+g <- e_charts() |> 
+    e_graph_gl() |> 
+    e_graph_nodes(nodes = nodes, names = name, size = size, value = value) |> 
+    e_graph_edges(edges = data, source = Source, target = Target) |> 
+    e_modularity() |> 
+    e_tooltip()
+
+g
+
+
+```
+
+A circle graph makes it hard to seen, but there can be observed some vertices that "connects" groups together. 
+
+# Data 2 - Media data
+
+A force-directed layout algorithm, that scales relatively well to large graphs.
+
+
+```{r}
+nodes <- read.csv("Data files/Dataset1-Media-Example-NODES.csv")
+edges <- read.csv("Data files/Dataset1-Media-Example-EDGES.csv")
+
+g <- graph_from_data_frame(d=edges, vertices=nodes, directed = T) 
+l <- layout_with_graphopt(g)
+deg <- degree(g)
+E(g)$width <- (E(g)$weight + min(E(g)$weight))/10
+V(g)$label.cex = 0.7
+plot(g, layout=l, vertex.size = deg, vertex.label=V(g)$media,
+     edge.arrow.size=.4, edge.curved=0.5)
+
+```
+```{r}
+edges <- merge.data.frame(edges, nodes[, c("id", "media")], by.x = "from", by.y = "id")
+colnames(edges)[length(edges)] <- "from_media"
+edges <- merge.data.frame(edges, nodes[, c("id", "media")], by.x = "to", by.y = "id")
+colnames(edges)[length(edges)] <- "to_media"
+nodes$audience.size <- nodes$audience.size
+g <- e_charts() |> 
+    e_graph() |> 
+    e_graph_nodes(nodes = nodes, names = media, size = audience.size, 
+                  value = audience.size, category = media.type) |> 
+    e_graph_edges(edges = edges, source = from_media, target = to_media) |> 
+    e_tooltip()
+
+g
+
+```
+
+Because of the weights we can distinguish groups of news providers that often refers to each other.
+
+# Data 3 - Airlines data
+
+Place vertices on the plane using the force-directed layout algorithm by Fruchterman and Reingold.
+
+```{r}
+nodes <- read.csv("Data files/Dataset3-Airlines-NODES.csv")
+edges <- read.csv("Data files/Dataset3-Airlines-EDGES.csv")
+edges <-
+    merge.data.frame(edges, nodes[, c("ID", "Code")], by.x = "Source", by.y = "ID")
+colnames(edges)[length(edges)] <- "Source_media"
+edges <-
+    merge.data.frame(edges, nodes[, c("ID", "Code")], by.x = "Target", by.y = "ID")
+colnames(edges)[length(edges)] <- "Target_media"
+
+g <- graph_from_data_frame(d = edges,
+                           vertices = nodes,
+                           directed = F)
+l <- layout_with_fr(g)
+nodes_names <- table(edges$Target_media)
+V(g)$label <- ""
+deg <- degree(g)
+E(g)$width <- edges$Freq / 200
+V(g)$label.cex = 0.1
+nodes_names[nodes_names > 10] |> sort(decreasing = T) |> print()
+plot(
+    g,
+    layout = l,
+    vertex.size = deg / 10,
+    vertex.label = V(g)$media,
+    edge.arrow.size = .4,
+    edge.curved = 0.5
+)
+
+```
+```{r}
+
+g <- e_charts() |> 
+    e_graph() |> 
+    e_graph_nodes(nodes = nodes, names = Code, size = Visits, 
+                  value = Visits) |> 
+    e_graph_edges(edges = edges, source = Source_media, target = Target_media) |> 
+    e_modularity() |> 
+    e_tooltip()
+
+g
+
+```
+
+It is not easy to interpret this graph because of the large number of vertices, but few things may be observed:
+- there are some airports that are connecting a great amount of smaller airports
+- there are airports that have only one connection to the "knot" vertex
+
+
+# Data 4 - Bio diseasome
+
+DrL is a force-directed graph layout toolbox focused on real-world large-scale graphs, developed by Shawn Martin and colleagues at Sandia National Laboratories.
+
+```{r}
+nodes <- read.csv("Data files/bio-diseasome.txt", sep = " ")
+g <- graph_from_data_frame(d = nodes,
+                           directed = F)
+l <- layout_with_drl(g)
+deg <- degree(g)
+V(g)$label <- ""
+
+plot(
+    g,
+    layout = l,
+    vertex.size = sqrt(deg),
+    vertex.label = V(g)$media,
+    edge.arrow.size = .4,
+    edge.curved = 0.5
+)
+
+```
+
+There are easily separable groups of vertices.
