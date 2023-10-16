@@ -195,3 +195,9 @@ plot(
 ```
 
 There are easily separable groups of vertices.
+
+# Discussion
+
+In this we could easily see the "fat tails" in the graphs - vertices that "connects" another vertices that are less
+"popular". Additionally, these graphs could be divided into separate graphs and this would make perfect sense (e.g. dividing into
+families in case of GoT).
