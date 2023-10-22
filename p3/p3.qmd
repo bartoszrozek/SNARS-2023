@@ -1,0 +1,152 @@
+---
+title: "Social Networks and System Recomendations"
+subtitle: "Project 3: "
+author: "Bartosz Rożek"
+date: last-modified
+date-format: "DD-MM-YYYY"
+editor: visual
+title-block-banner: "#e8e6ef"
+page-layout: article
+css: ../Styles/styles.css
+format: 
+  html:
+    toc: true
+    smooth-scroll: true
+    embed-resources: true
+    fontcolor: black
+    toc-location: right
+    toc-title: Summary
+    toc-depth: 3
+    number-sections: true
+    number-depth: 4
+    code-fold: false
+    code-summary: "Code"
+tbl-cap-location: bottom
+---
+
+```{r message=F}
+library(ggplot2)
+```
+
+# P 3.0
+
+Continuous power distribution CDF:
+
+$$
+F(x)  = (\frac{x}{x_{min}})^{1-\alpha}
+$$
+
+```{r message=FALSE}
+
+cpd <- function(x, xmin = 1, alpha = 2){
+    return((x/xmin)^(1-alpha))
+}
+
+n <- 1000
+
+df <- data.frame(normal = qnorm(runif(n)),
+                 cpd = cpd(runif(n), xmin = 0.1, alpha = 2))
+
+ggplot(data = df, aes(x = normal)) +
+    geom_histogram() + 
+    geom_vline(xintercept = c(-1, 1), color = "red")
+
+ggplot(data = df, aes(x = cpd)) +
+    geom_histogram()
+
+```
+
+
+```{r}
+
+ss <- c(1, 1.25, 1.5, 1.75, 2)
+
+purrr::walk(ss, \(s) {
+    zetas <- VGAM::rzeta(n, s)
+    q80 <- quantile(zetas, 0.80)
+    q20 <- quantile(zetas, 0.20)
+    
+    cat(glue::glue("S-parameter value: {s} \n"))
+    cat()
+    cat(glue::glue((
+        "Percentage of data above the 80% quantile: {sum(zetas >= q80)/n}\n"
+    )
+    ))
+    
+    hist(zetas)
+    
+})
+
+```
+# P 3.1
+
+```{r}
+
+library(igraph)
+
+net <- PAFit::generate_BA(N = 100)
+hist(table(net$graph[,2]), main = "BA network")
+plot(net)
+
+g <- erdos.renyi.game(100, 1/100)
+deg <- degree(g)
+V(g)$label <- ""
+E(g)$width <- 4
+
+hist(deg, main = "ER graphs")
+plot(
+    g,
+    vertex.size = 7, 
+    edge.arrow.size=0
+)
+```
+
+# P 3.2
+
+```{r}
+
+nodes <-
+    read.csv("../p2/Data files/Dataset1-Media-Example-NODES.csv")
+edges <-
+    read.csv("../p2/Data files/Dataset1-Media-Example-EDGES.csv")
+
+g <- graph_from_data_frame(d = edges,
+                           vertices = nodes,
+                           directed = T)
+
+layouts <- c("graphopt", "dh", "gem", "kk", "lgl", "mds", "sugiyama")
+
+purrr::walk(layouts,
+            \(layout_) {
+                
+                fun_name <-
+                    glue::glue("layout_with_{layout_}")
+                
+                
+                helptext <- help(fun_name, package = igraph)
+                helptxt <- utils:::.getHelpFile(as.character(helptext))
+                helptxt <- paste0(as.character(helptxt), collapse = "")
+                helptxt <- helptxt |> as.character() |> paste0(collapse = "")
+                helptxt <- gsub(pattern = "\\\\", "", helptxt)
+                helptxt <- gsub(pattern = "\\{", "", helptxt)
+                helptxt <- gsub(pattern = "\\}", "", helptxt)
+                helptxt <- gsub(pattern = "\\n", "", helptxt)
+                
+                stringr::str_match(helptxt, 
+                                   "description\\s*(.*?)\\s*usage")[,2] |> 
+                    print()
+                
+                l <- eval(parse(text = glue::glue("{fun_name}(g)")))
+                deg <- degree(g)
+                E(g)$width <- (E(g)$weight + min(E(g)$weight)) / 10
+                V(g)$label <- ""
+                plot(
+                    g,
+                    layout = l,
+                    vertex.size = deg,
+                    edge.arrow.size = .4,
+                    edge.curved = 0.5,
+                    main = glue::glue("{stringr::str_to_title(layout_)} layout")
+                )
+            })
+```

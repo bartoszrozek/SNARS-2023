@@ -37,7 +37,6 @@ library(echarts4r)
 
 Place vertices on a circle, in the order of their vertex ids.
 
-
 ```{r}
 
 
@@ -79,12 +78,11 @@ g
 
 ```
 
-A circle graph makes it hard to seen, but there can be observed some vertices that "connects" groups together. 
+A circle graph makes it hard to seen, but there can be observed some vertices that "connects" groups together.
 
 # Data 2 - Media data
 
 A force-directed layout algorithm, that scales relatively well to large graphs.
-
 
 ```{r}
 nodes <- read.csv("Data files/Dataset1-Media-Example-NODES.csv")
@@ -99,6 +97,7 @@ plot(g, layout=l, vertex.size = deg, vertex.label=V(g)$media,
      edge.arrow.size=.4, edge.curved=0.5)
 
 ```
+
 ```{r}
 edges <- merge.data.frame(edges, nodes[, c("id", "media")], by.x = "from", by.y = "id")
 colnames(edges)[length(edges)] <- "from_media"
@@ -152,6 +151,7 @@ plot(
 )
 
 ```
+
 ```{r}
 
 g <- e_charts() |> 
@@ -166,10 +166,7 @@ g
 
 ```
 
-It is not easy to interpret this graph because of the large number of vertices, but few things may be observed:
-- there are some airports that are connecting a great amount of smaller airports
-- there are airports that have only one connection to the "knot" vertex
-
+It is not easy to interpret this graph because of the large number of vertices, but few things may be observed: - there are some airports that are connecting a great amount of smaller airports - there are airports that have only one connection to the "knot" vertex
 
 # Data 4 - Bio diseasome
 
@@ -198,6 +195,4 @@ There are easily separable groups of vertices.
 
 # Discussion
 
-In this we could easily see the "fat tails" in the graphs - vertices that "connects" another vertices that are less
-"popular". Additionally, these graphs could be divided into separate graphs and this would make perfect sense (e.g. dividing into
-families in case of GoT).
+In this we could easily see the "fat tails" in the graphs - vertices that "connects" another vertices that are less "popular". Additionally, these graphs could be divided into separate graphs and this would make perfect sense (e.g. dividing into families in case of GoT).
