@@ -1,0 +1,168 @@
+---
+title: "Social Networks and System Recomendations"
+subtitle: "Project 3: "
+author: "Bartosz Rożek"
+date: last-modified
+date-format: "DD-MM-YYYY"
+editor: visual
+title-block-banner: "#e8e6ef"
+page-layout: article
+css: ../Styles/styles.css
+format: 
+  html:
+    toc: true
+    smooth-scroll: true
+    embed-resources: true
+    fontcolor: black
+    toc-location: right
+    toc-title: Summary
+    toc-depth: 3
+    number-sections: true
+    number-depth: 4
+    code-fold: false
+    code-summary: "Code"
+tbl-cap-location: bottom
+---
+
+```{r message=F}
+library(ggplot2)
+library(igraph)
+```
+
+
+```{r}
+data <- read.csv("../p2/asoiaf-book1-edges.csv")
+vertices <- data.frame(value = as.numeric(table(data$Target)), name = names(table(data$Target)))
+
+ggplot(data = vertices, aes(x = value)) +
+    geom_histogram() +
+    scale_x_continuous(trans="log10") +
+    scale_y_continuous(trans="log10")
+
+
+```
+
+# Exercise 3
+
+```{r}
+
+plot_dependency <- function(g) {
+    knn <- knn(g)$knn
+    degs <- degree(g)
+    if (all(names(degs) == names(knn))) {
+        df <- data.frame(deg = degs, knn = knn)
+        pl <- ggplot(df, aes(x = deg, y = knn)) +
+            geom_point() +
+            geom_smooth(method = 'lm', formula = y ~ x)
+    }
+    return(pl)
+    
+}
+
+random_switch <- function(g, p) {
+    mat <- as_adjacency_matrix(g) |> as.matrix()
+    n <- length(mat) |> sqrt()
+    dim(mat) <- c(n, n)
+    ones <- which(mat == 1)
+    
+    for (i in 1:p) {
+        idx_1 <- sample(ones, 1)
+        idx_x_1 <- idx_1 %% n
+        idx_y_1 <- floor(idx_1 / n) + 1
+        idx_2 <- sample(ones, 1)
+        idx_x_2 <- idx_2 %% n
+        idx_y_2 <- floor(idx_2 / n) + 1
+        
+        if (mat[idx_x_1, idx_y_2] == 0 && mat[idx_x_2, idx_y_1] == 0) {
+            mat[idx_x_1, idx_y_1] <- 0
+            mat[idx_x_2, idx_y_2] <- 0
+            mat[idx_y_1, idx_x_1] <- 0
+            mat[idx_y_2, idx_x_2] <- 0
+            mat[idx_x_1, idx_y_2] <- 1
+            mat[idx_x_2, idx_y_1] <- 1
+            mat[idx_y_2, idx_x_1] <- 1
+            mat[idx_y_1, idx_x_2] <- 1
+        }
+        
+        
+    }
+    g <- graph_from_adjacency_matrix(mat, mode = "undirected")
+    return(g)
+}
+
+
+corr <- function(g) {
+    edges_ <- get.edgelist(g)
+    i <- 1
+    degrees_ <- degree(g)
+    n1 <- 0
+    n2 <- 0
+    d1 <- 0
+    M <- nrow(edges_)
+    for (i in 1:M) {
+        v1 <- edges_[i, 1]
+        v2 <- edges_[i, 2]
+        k <- degrees_[v1]
+        j <- degrees_[v2]
+        n1 <- n1 + k * j
+        n2 <- n2 + j + k
+        d1 <- d1 + j ** 2 + k ** 2
+        
+    }
+    
+    r <- ((n1 / M  - (n2 / (2 * M)) ** 2)) / ((d1 / (2 * M)  - (n2 / (2 * M)) **
+                                                   2))
+    return(r)
+}
+
+
+```
+
+```{r}
+
+
+g <- graph_from_data_frame(data, directed = F, vertices = NULL)
+plot_dependency(g) + ggtitle(glue::glue("Correlation = {corr(g)}"))
+
+
+g <- random_switch(g, p = 10)
+plot_dependency(g) + ggtitle(glue::glue("Correlation = {corr(g)}"))
+g <- random_switch(g, p = 10)
+plot_dependency(g) + ggtitle(glue::glue("Correlation = {corr(g)}"))
+g <- random_switch(g, p = 10)
+plot_dependency(g) + ggtitle(glue::glue("Correlation = {corr(g)}"))
+```
+
+# Exercise 6
+
+```{r}
+
+
+```
+
+# Exercise 8
+
+```{r}
+
+df <- read.fwf(file = "field.csv",
+               widths = c(26, 9, 18, 2))
+df <- df[complete.cases(df), ]
+colnames(df) <- c("Name", "Year", "Country", "EN")
+ggplot(df, aes(x = EN)) +
+    geom_bar() +
+    ggtitle("Field prize") +
+    ylab("")
+
+df <- read.fwf(file = "nobel.csv",
+               widths = c(35, 9, 20, 2))
+df <- df[complete.cases(df), ]
+colnames(df) <- c("Name", "Year", "Country", "EN")
+ggplot(df, aes(x = EN)) +
+    geom_bar() +
+    ggtitle("Economics nobel") +
+    ylab("")
+
+
+
+
+```
