@@ -1,6 +1,6 @@
 ---
 title: "Social Networks and System Recomendations"
-subtitle: "Project 3: "
+subtitle: "Project 4"
 author: "Bartosz Rożek"
 date: last-modified
 date-format: "DD-MM-YYYY"
@@ -30,24 +30,17 @@ library(igraph)
 ```
 
 
-# Exercise 1
-
 ```{r}
 data <- read.csv("../p2/asoiaf-book1-edges.csv")
 vertices <- data.frame(value = as.numeric(table(data$Target)), name = names(table(data$Target)))
-
-ggplot(data = vertices, aes(x = value)) +
-    geom_histogram() +
-    scale_x_continuous(trans="log10") +
-    scale_y_continuous(trans="log10")
-
-
 ```
-# Exercise 2
+
+# Exercise 2 
 
 $$
 \langle k\rangle_{nn}(k_i) = \sum_l{lP(l|k_i)} \stackrel{uncorrelated}{=} 
-\sum_l{l \frac{lP(l)}{\langle k\rangle}} = \frac{lP(l)}{\langle k\rangle} = 
+\sum_l{l \frac{lP(l)}{\langle k\rangle}} =
+\frac{\sum_l{l^2P(l)}}{\langle k\rangle} =
 \frac{\langle k^2\rangle}{\langle k\rangle}
 $$
 
@@ -94,10 +87,11 @@ random_switch <- function(g, p) {
             mat[idx_y_2, idx_x_1] <- 1
             mat[idx_y_1, idx_x_2] <- 1
         }
+        mat[lower.tri(mat)] = t(mat)[lower.tri(mat)]
         
         
     }
-    g <- graph_from_adjacency_matrix(mat, mode = "max")
+    g <- graph_from_adjacency_matrix(mat, mode = "undirected")
     return(g)
 }
 
