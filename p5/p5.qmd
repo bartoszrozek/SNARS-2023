@@ -1,0 +1,363 @@
+---
+title: "Social Networks and System Recomendations"
+subtitle: "Project 4"
+author: "Bartosz Rożek"
+date: last-modified
+date-format: "DD-MM-YYYY"
+editor: visual
+title-block-banner: "#e8e6ef"
+page-layout: article
+css: ../Styles/styles.css
+format: 
+  html:
+    toc: true
+    smooth-scroll: true
+    embed-resources: true
+    fontcolor: black
+    toc-location: right
+    toc-title: Summary
+    toc-depth: 3
+    number-sections: true
+    number-depth: 4
+    code-fold: false
+    code-summary: "Code"
+tbl-cap-location: bottom
+---
+
+```{r message=F}
+library(ggplot2)
+library(igraph)
+library(purrr)
+library(data.table)
+```
+
+# Exercise 0.1
+
+```{r}
+ER_adj_matrix <- function(N, p){
+    mat <- as.numeric(runif(N^2) < p)
+    dim(mat) <- c(N, N)
+    mat[lower.tri(mat)] <- mat[upper.tri(mat)]
+    diag(mat) <- 0
+    return(mat)
+}
+```
+
+# Exercise 0.2
+
+```{r}
+ad_mat <- ER_adj_matrix(25, 0.3)
+graph_from_adjacency_matrix(ad_mat,
+                            mode = "undirected") |> plot()
+```
+
+# Exercise 0.3
+
+```{r}
+colSums(ad_mat) |> hist()
+```
+
+# Exercise 0.4
+
+We would expect binomial distribution since for every vertex we "draw" number of edges.
+
+# Exercise 0.5
+
+"The Poisson distribution is actually a limiting case of a Binomial distribution when the number of trials, n, gets very large and p, the probability of success, is small. As a rule of thumb, if $n \geq 100$ and $np\leq10$, the Poisson distribution (taking $\lambda=np$) can provide a very good approximation to the binomial distribution." - [Source](https://mathcenter.oxford.emory.edu/site/math117/connectingPoissonAndBinomial/)
+
+# Exercise 0.6 & 0.7
+
+```{r message=FALSE}
+
+test_distributions <- function(vertex_dist, approx_dist){
+    comp_df <- data.frame(values = c(vertex_dist, approx_dist), 
+                      group = c(rep("Actual", n), rep("Poisson", n)))
+
+    ks_pval <- suppressWarnings(ks.test(vertex_dist, approx_dist)$p.value)
+    chi_pval <- suppressWarnings(chisq.test(vertex_dist, approx_dist)$p.value)
+    g <- ggplot(comp_df, aes(values, fill = group)) +
+        geom_histogram(position = "dodge") + 
+        ggtitle(glue::glue("KS test pvalue: {round(ks_pval, 5)}\nChi-squared test pvalue: {round(chi_pval,5)}"))
+    return(g)
+
+}
+
+ns <- c(10, 50, 100, 300)
+ps <- c(0.01, 0.02, 0.1)
+for (n in ns) {
+    for (p in ps) {
+        am <- ER_adj_matrix(n, p)
+        vertex_dist <- colSums(am)
+        approx_dist <- rpois(n, n*p)
+        tryCatch(
+        {
+            test_distributions(vertex_dist, approx_dist) |> print()
+        },
+        error = function(cond) {
+            print(glue::glue("Error for n={n}, p={p}: {cond$message}"))
+            # Choose a return value in case of error
+        },
+        warning = function(cond) {
+            print(cond)
+        }
+    )
+    }
+}
+```
+
+# Exercise 1
+
+$$
+q := \langle k \rangle
+$$
+
+$$ \mathbb{E}(K) = \sum_{k=0}^\inf \frac{ke^{-q}q^k }{k!}=
+    \sum_{k=0}^\inf \frac{e^{-q}q^k }{(k-1)!} = 
+    e^{-q}q \sum_{k=0}^\inf \frac{q^{k-1} }{(k-1)!} = 
+    e^{-q}qe^{q} = q = \langle k \rangle
+$$
+
+\begin{aligned}
+\mathbb{E}(K^2) = \sum_{k=0}^\inf \frac{k^2e^{-q}q^k }{k!}=
+                  \sum_{k=0}^\inf \frac{ke^{-q}q^k }{(k-1)!}=
+                  \sum_{k=0}^\inf \frac{(k - 1)e^{-q}q^k + e^{-q}q^k}{(k-1)!}= \\
+                  e^{-q}q^2\sum_{k=0}^\inf \frac{q^{k-2} }{(k-2)!} + \sum_{k=0}^\inf \frac{e^{-q}q^k }{(k-1)!} = 
+                  e^{-q}q^2e^{-q} + q = q^2 + q = \langle k \rangle + \langle k \rangle^2
+\end{aligned}
+
+# Exercise 2 
+
+```{r}
+cluster_coeff <- function(am) {
+    ks <- rowSums(am)
+    map_dbl(1:n, \(i) {
+        neighbors <- which(am[i, ] == 1)
+        if (length(neighbors) < 2){
+            0
+        }else{
+             pairs <- combn(neighbors, m = 2, simplify = F)
+            (map_int(pairs, \(pair) {
+            am[pair[1], pair[2]]
+        }) |> sum() * 2) / (ks[i] * (ks[i] - 1))
+        }
+    }) |>  mean()
+    
+} 
+
+n <- 10
+p <- 0.5
+am <- ER_adj_matrix(n, p)
+ks <- rowSums(am)
+i <- 3
+neighbors <- which(am[i,] == 1)
+pairs <- combn(neighbors, m = 2, simplify = F)
+
+
+map_dbl(1:100, \(j){
+    am <- ER_adj_matrix(n, p)
+    cluster_coeff(am)
+}) |> boxplot()
+
+```
+
+# Exercise 3
+
+```{r}
+
+community_graph <- function(N, ns, P, ps){
+    matrices <- map2(ns, ps, \(n,p) ER_adj_matrix(n,p))
+
+    agg_mat <- ER_adj_matrix(N,P) 
+    idxs <- cumsum(ns)
+    
+    pwalk(list(c(1,idxs[-length(ns)] + 1), 
+                idxs,
+                matrices), 
+                \(idx_start, idx_stop, matrix_){
+                    agg_mat[idx_start:idx_stop, idx_start:idx_stop] <<- matrix_
+                })
+    
+    return(agg_mat)
+}
+N <- 20
+P <- 0.03
+ns <- c(5,5,7,3)
+ps <- c(0.2, 0.12, 0.28, 0.3)
+cg <- community_graph(N, ns, P, ps)
+graph_from_adjacency_matrix(cg,
+                            mode = "undirected") |> plot()
+
+for (p_ in c(0.05, 0.1, 0.2,0.5)){
+    ns <- c(5,5,5,5)
+    ps <- rep(p_, 4)
+    cg <- community_graph(N, ns, P, ps)
+    graph_from_adjacency_matrix(cg,
+                                mode = "undirected") |> plot()
+}
+```
+
+# Exercise 4
+
+```{r cache=TRUE}
+
+WS_adj_matrix <- function(N, p, K){
+    K <- 2
+    k <- K/2
+    mat <- matrix(0, N, N)
+
+    for (i in 1:N) {
+        left_neighboors <- seq(i + 1, i + k) %% N
+        right_neighboors <- seq(i - 1, i - k) %% N
+        neighboors <- c(left_neighboors, right_neighboors)
+        neighboors[neighboors == 0] <- N
+        mat[i, neighboors] <- 1
+        mat[neighboors, i] <- 1
+    }
+    
+    for (i in 1:N){
+        edges <- which(mat[i,] == 1)
+        non_edges <- which(mat[i,] == 0)
+        for (edge in edges) {
+            if (runif(1) < p){
+                mat[i, edge] <- 0
+                mat[edge, i] <- 0
+                new_connection <- sample(non_edges, 1)
+                mat[i, new_connection] <- 1
+                mat[new_connection, i] <- 1
+                non_edges <- non_edges[non_edges != new_connection]
+                non_edges <- c(non_edges, edge)
+            }
+        }
+    }
+    
+    return(mat)
+}
+
+ws_results <- map(seq(0.01, 0.7, 0.01), \(p) {
+    avg_cc <- map_dbl(1:100, \(i) {
+        WS_adj_matrix(20, p, 2) |> cluster_coeff()
+    }) |> mean()
+    return(data.frame(p = p, avg_cc = avg_cc))
+}) |> rbindlist()
+
+ggplot(ws_results, aes(p, avg_cc)) +
+    geom_point() +
+    geom_smooth(formula = "y~x", method = "loess")
+
+```
+
+# Exercise 6
+
+```{r}
+
+vectorInList <- function(v, L){
+    idx <- map_lgl(L, \(elem){
+        all(sort(elem) == sort(v))
+    }) |> which()
+    if (identical(idx, integer(0))) {
+        idx <- 0
+    }
+    return(idx)
+}
+
+drop_zero_vertixes <- function(value, L, degrees) {
+    # value <- 1
+    # L <- possible_pairs
+    if (degrees[value] == 0) {
+        idxs <- map_lgl(L, \(elem) {
+            value %in% elem
+        }) |> which()
+        L[idxs] <- NULL
+    }
+        return(L)
+    }
+
+
+
+configuration_model_am <- function(degrees) {
+    if (!sum(degrees) %% 2) {
+        stop("Sum must be even!")
+    }
+    orig_degrees <- degrees
+    
+    vertixes <- which(degrees > 0)
+    possible_pairs <- combn(vertixes, m = 2, simplify = F)
+    N <- length(degrees)
+    mat <- matrix(0, N, N)
+    
+    while (length(possible_pairs) > 0) {
+        if (sum(degrees > 0) == 1) {
+            verts <- which(degrees > 0)
+            mat[verts, verts] <- mat[verts, verts] + 1
+        } else{
+            verts <- sample(which(degrees > 0), 2)
+            if (length(possible_pairs) > 0 &&
+                !vectorInList(verts, possible_pairs)) {
+                next
+            }
+            mat[verts[1], verts[2]] <- mat[verts[1], verts[2]] + 1
+            mat[verts[2], verts[1]] <- mat[verts[2], verts[1]] + 1
+            possible_pairs[vectorInList(verts, possible_pairs)] <- NULL
+            
+        }
+        
+        degrees[verts] <- degrees[verts] - 1
+        possible_pairs <-
+            drop_zero_vertixes(verts[1], possible_pairs, degrees)
+        possible_pairs <-
+            drop_zero_vertixes(verts[2], possible_pairs, degrees)
+        
+    }
+    coef <- sum(degrees)/sum(orig_degrees)
+    while (sum(degrees > 0) > 0) {
+        if (sum(degrees > 0) == 1) {
+            verts <- which(degrees > 0)
+            mat[verts, verts] <- mat[verts, verts] + 1
+        } else{
+            verts <- sample(which(degrees > 0), 2)
+            mat[verts[1], verts[2]] <- mat[verts[1], verts[2]] + 1
+            mat[verts[2], verts[1]] <- mat[verts[2], verts[1]] + 1
+            
+        }
+        degrees[verts] <- degrees[verts] - 1
+        
+    }
+    return(list(mat = mat, coef = coef))
+}
+```
+
+```{r cache=TRUE}
+
+results <- map(seq(0.01, 0.7, 0.05), \(p){
+    degrees <- rpois(25, p*100)
+    if (!sum(degrees) %% 2){
+        degrees[1] <- degrees[1] + 1
+    }
+    cm <- configuration_model_am(degrees)
+    cm
+})
+results_df <- data.frame(p = seq(0.01, 0.7, 0.05),
+    coef = map_dbl(results, \(el) el$coef))
+ggplot(results_df, aes(p, coef)) +
+    geom_point() +
+    geom_smooth(formula = "y~x", method = "loess") +
+    ggtitle("Probability test")
+```
+
+```{r cache=TRUE, warning=FALSE}
+results <- map(seq(20, 100, 20), \(n){
+    degrees <- rpois(n, n*0.1)
+    if (!sum(degrees) %% 2) {
+        degrees[1] <- degrees[1] + 1
+    }
+    cm <- configuration_model_am(degrees)
+    cm
+})
+results_df <- data.frame(p = seq(20, 100, 20),
+    coef = map_dbl(results, \(el) el$coef))
+ggplot(results_df, aes(p, coef)) +
+    geom_point() +
+    geom_smooth(formula = "y~x", method = "loess") +
+    ggtitle("Number test")
+
+```
