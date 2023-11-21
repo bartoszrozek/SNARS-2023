@@ -1,0 +1,218 @@
+---
+title: "Social Networks and System Recomendations"
+subtitle: "Project 6"
+author: "Bartosz Rożek"
+date: last-modified
+date-format: "DD-MM-YYYY"
+editor: visual
+title-block-banner: "#e8e6ef"
+page-layout: article
+css: ../Styles/styles.css
+format: 
+  html:
+    toc: true
+    smooth-scroll: true
+    embed-resources: true
+    fontcolor: black
+    toc-location: right
+    toc-title: Summary
+    toc-depth: 3
+    number-sections: true
+    number-depth: 4
+    code-fold: false
+    code-summary: "Code"
+tbl-cap-location: bottom
+---
+
+```{r message=F}
+library(ggplot2)
+library(igraph)
+library(purrr)
+library(data.table)
+library(magick)
+library(magrittr)
+```
+
+# Exercise 0.1 & 0.2
+
+```{r}
+full_adj_matrix <- function(N){
+    mat <- matrix(1, N, N) - diag(N)
+    return(mat)
+}
+
+add_new_node <- function(mat, n = 1, model = "BA"){
+    for (i in 1:n) {
+        if (model == "BA"){
+            probas <- colSums(mat)
+            probas <- probas/sum(probas)
+            connections <- as.numeric(runif(probas) < probas)
+        }else if (model == "A") {
+            probas <- rep(1/nrow(mat), nrow(mat))
+            connections <- as.numeric(runif(probas) < probas)
+        }
+        mat <- rbind(mat, connections) |> cbind(c(t(connections), 0)) 
+            
+    }
+    rownames(mat) <- NULL
+    return(mat)
+}
+
+add_new_vertex_B <- function(mat, n = 1){
+    for (i in 1:n){
+        if (!sum(colSums(mat))){
+            probas <- rep(nrow(mat), nrow(mat))
+        } else {
+            probas <- colSums(mat)
+        
+        }
+        probas <- (probas/sum(probas)) |> cumsum()
+        from <- min(which(runif(1) < probas))
+        to <- min(which(runif(1) < probas))
+        if (from != to){
+            mat[from, to] <- 1
+            mat[to, from] <- 1    
+        }
+    }
+    
+    return(mat)
+}
+
+mat <- full_adj_matrix(3)
+matrices <- map(1:30, \(i){
+    mat <<- add_new_node(mat, 1)
+})
+
+g <- graph_from_adjacency_matrix(matrices[[length(matrices)]], mode = "undirected")
+l <- layout_nicely(g)
+
+walk2(matrices, 1:length(matrices), \(mat, i){
+    g <- graph_from_adjacency_matrix(mat, mode = "undirected")
+    deg <- degree(g)* 2
+    if (i < 10){
+        number <- paste0("0", i)
+    }else{
+        number <- as.character(i)
+    }
+    png(glue::glue("animation/{number}.png"), width=1600, height=1200, res=300) 
+    plot(g, layout=l[1:nrow(mat),], vertex.size = deg, vertex.label="")
+    dev.off()
+})
+
+
+list.files(path='animation', pattern = '*.png', full.names = TRUE) %>% 
+        sort() |> 
+        image_read() %>% # reads each path file
+        image_join() %>% # joins image
+        image_animate(fps=4) %>% # animates, can opt for number of loops
+        image_write("animation.gif") # write to current dir
+
+```
+
+
+# Exercise 0.3
+
+```{r}
+
+mat <- full_adj_matrix(3)
+dists <- map(1:10, \(i){
+    nodes <- add_new_node(mat, 50) |> colSums()
+}) |> unlist()
+
+hist(dists, freq = F)
+
+
+```
+
+# Exercise 0.4 
+
+```{r}
+
+logs <- log(dists)
+y <- logs[logs != -Inf]
+x <- 1:length(y)
+lm(y ~ x)$coefficients |> print()
+```
+
+# Exercise 3
+
+```{r}
+
+max_size <- 100
+start_size <- 3
+mat <- full_adj_matrix(start_size)
+nodes <- map_df(start_size:(max_size - 1), \(i){
+    mat <<- add_new_node(mat, 1)
+    data.frame(x = c(colSums(mat), rep(0, max_size - nrow(mat))), t = i)
+})
+
+ggplot(nodes, aes(x=t, y=x)) +
+    geom_point(alpha=0.2)
+
+g <- graph_from_adjacency_matrix(mat, mode = "undirected")
+l <- layout_nicely(g)
+deg <- degree(g)
+plot(g, layout=l, vertex.size = deg, vertex.label="")
+hist(nodes[nodes$t == (max_size-1), "x"])
+```
+# Exercise 4
+
+```{r}
+
+max_size <- 100
+start_size <- 3
+mat <- full_adj_matrix(start_size)
+nodes <- map_df(start_size:(max_size - 1), \(i){
+    mat <<- add_new_node(mat, 1, model = "A")
+    data.frame(x = c(colSums(mat), rep(0, max_size - nrow(mat))), t = i)
+})
+
+ggplot(nodes, aes(x=t, y=x)) +
+    geom_point(alpha=0.2)
+
+g <- graph_from_adjacency_matrix(mat, mode = "undirected")
+l <- layout_nicely(g)
+deg <- degree(g)
+plot(g, layout=l, vertex.size = deg, vertex.label="")
+hist(nodes[nodes$t == (max_size-1), "x"])
+```
+
+# Exercise 5
+
+```{r}
+
+max_size <- 100
+start_size <- 3
+mat <- matrix(as.numeric(runif(max_size**2) < 0.01), max_size, max_size)
+diag(mat) <- 0
+nodes <- map_df(start_size:(max_size - 1), \(i){
+    mat <<- add_new_vertex_B(mat, 1)
+    data.frame(x = c(colSums(mat), rep(0, max_size - nrow(mat))), t = i)
+})
+
+ggplot(nodes, aes(x=t, y=x)) +
+    geom_point(alpha=0.2)
+
+g <- graph_from_adjacency_matrix(mat, mode = "undirected")
+l <- layout_nicely(g)
+deg <- degree(g)
+plot(g, layout=l, vertex.size = deg, vertex.label="")
+hist(nodes[nodes$t == (max_size-1), "x"])
+
+
+```
+
+# Exercise 6
+
+```{r}
+
+max_size <- 1000
+start_size <- 3
+mat <- matrix(as.numeric(runif(max_size**2) < 0.01), max_size, max_size)
+diag(mat) <- 0
+nodes <- map_df(start_size:(max_size - 1), \(i){
+    mat <<- add_new_vertex_B(mat, 1)
+    data.frame(x = c(colSums(mat), rep(0, max_size - nrow(mat))), t = i)
+})
+hist(nodes[nodes$t == (max_size-1), "x"])
+```

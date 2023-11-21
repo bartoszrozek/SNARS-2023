@@ -1,0 +1,249 @@
+---
+title: "Social Networks and System Recomendations"
+subtitle: "Project 7"
+author: "Bartosz Rożek"
+date: last-modified
+date-format: "DD-MM-YYYY"
+editor: visual
+title-block-banner: "#e8e6ef"
+page-layout: article
+css: ../Styles/styles.css
+format: 
+  html:
+    toc: true
+    smooth-scroll: true
+    embed-resources: true
+    fontcolor: black
+    toc-location: right
+    toc-title: Summary
+    toc-depth: 3
+    number-sections: true
+    number-depth: 4
+    code-fold: false
+    code-summary: "Code"
+tbl-cap-location: bottom
+---
+
+```{r message=F}
+library(ggplot2)
+library(igraph)
+library(purrr)
+library(data.table)
+library(magick)
+library(magrittr)
+```
+
+# 7.18
+
+## ER graph
+
+```{r}
+ER_adj_matrix <- function(N, p){
+    mat <- as.numeric(runif(N^2) < p)
+    dim(mat) <- c(N, N)
+    mat[lower.tri(mat)] <- mat[upper.tri(mat)]
+    diag(mat) <- 0
+    return(mat)
+}
+
+er_am <- ER_adj_matrix(300, 0.01)
+
+g_er <- graph_from_adjacency_matrix(er_am, mode = "undirected")
+deg <- degree(g_er)
+l <- layout_nicely(g_er)
+plot(g_er, layout = l, vertex.size = deg, vertex.label="")
+
+```
+
+# SF network
+
+```{r}
+full_adj_matrix <- function(N){
+    mat <- matrix(1, N, N) - diag(N)
+    return(mat)
+}
+
+add_new_node <- function(mat, n = 1, model = "BA"){
+    for (i in 1:n) {
+        if (model == "BA"){
+            probas <- colSums(mat)
+            probas <- probas/sum(probas)
+            connections <- as.numeric(runif(probas) < probas)
+        }else if (model == "A") {
+            probas <- rep(1/nrow(mat), nrow(mat))
+            connections <- as.numeric(runif(probas) < probas)
+        }
+        mat <- rbind(mat, connections) |> cbind(c(t(connections), 0)) 
+            
+    }
+    rownames(mat) <- NULL
+    return(mat)
+}
+
+mat <- full_adj_matrix(3)
+matrices <- walk(1:297, \(i){
+    mat <<- add_new_node(mat, 1)
+})
+
+g_sf <- graph_from_adjacency_matrix(mat, mode = "undirected")
+deg <- degree(g_sf)
+l <- layout_nicely(g_sf)
+plot(g_sf, layout = l, vertex.size = deg, vertex.label="")
+```
+
+## Codes
+
+
+```{r}
+
+drop_random <- function(g, p) {
+    ec <- ecount(g)
+    edges_ <- sample(ec, size = floor(p * ec), replace = F)
+    return(delete_edges(g, edges_))
+}
+
+drop_attack <- function(g, p) {
+    vc <- vcount(g)
+    edges_ <- sample(1:vc, size = floor(p * vc), prob = degree(g)/sum(degree(g)), replace = F)
+    return(delete_vertices(g, edges_))
+}
+
+```
+
+```{r}
+test_graph <- function(g, type, p = 0.1){
+    g_init <- g
+    if (type == "random") {
+        g <- drop_random(g, p)    
+    }else if (type == "attack") {
+        g <- drop_attack(g, p)
+    }
+    
+    comp_inc <- (count_components(g) - count_components(g_init))/count_components(g_init)
+    dist_inc <- (mean_distance(g) - mean_distance(g_init))/mean_distance(g_init)
+    max_comp_dec <- (components(g)$csize[1] - components(g_init)$csize[1])/components(g_init)$csize[1] 
+    return(list(comp_inc = comp_inc,
+                      dist_inc = dist_inc,
+                      max_comp_dec = max_comp_dec, 
+                      dd = degree_distribution(g)))
+}
+```
+
+
+## Random failure
+
+Drop 10% of edges.
+
+```{r}
+
+er_results <- map(1:100, 
+       \(x){
+           test_graph(g_er, "random")
+       })
+
+sf_results <- map(1:100, 
+       \(x){
+           test_graph(g_sf, "random")
+       })
+
+combine2 <- function(er_results, sf_results, col_) {
+    data.frame(val = c(map_dbl(er_results,
+                            \(x) x[[col_]]),map_dbl(sf_results,
+                            \(x) x[[col_]])),
+               cat = c(rep("ER", length(er_results)), rep("SF", length(er_results)))
+               )
+}
+ggplot(data = combine2(er_results, sf_results, "comp_inc"), aes(x = cat, y = val)) +
+    geom_boxplot() + ggtitle("comp_inc")
+ggplot(data = combine2(er_results, sf_results, "dist_inc"), aes(x = cat, y = val)) +
+    geom_boxplot() + ggtitle("dist_inc")
+ggplot(data = combine2(er_results, sf_results, "max_comp_dec"), aes(x = cat, y = val)) +
+    geom_boxplot() + ggtitle("max_comp_dec")
+
+
+res <- data.frame(
+    er_ori = c(degree_distribution(g_er), rep(0, 100 - length(degree_distribution(g_er)))),
+    sf_ori = c(degree_distribution(g_sf), rep(0, 100 - length(degree_distribution(g_sf)))),
+    er = Reduce("+", map(er_results, \(x) c(
+        x$dd, rep(0, 100 - length(x$dd))
+    ))) / length(er_results),
+    sf = Reduce("+", map(sf_results, \(x) c(
+        x$dd, rep(0, 100 - length(x$dd))
+    ))) / length(sf_results),
+    x = 1:100
+)
+
+ggplot(res[1:50,], aes(x = x)) +
+    geom_line(aes(y = er, color = "Random failures")) + 
+    geom_line(aes(y = er_ori, color = "Original")) + 
+    ggtitle("ER")
+
+ggplot(res[1:50,], aes(x = x)) +
+    geom_line(aes(y = sf, color = "Random failures")) + 
+    geom_line(aes(y = sf_ori, color = "Original")) + 
+    ggtitle("SF")
+
+```
+
+
+
+## Random failure
+
+Drop 10% of vertices with probability proportional to the vertex degree.
+
+```{r}
+
+er_results <- map(1:100, 
+       \(x){
+           test_graph(g_er, "attack")
+       })
+
+sf_results <- map(1:100, 
+       \(x){
+           test_graph(g_sf, "attack")
+       })
+
+combine2 <- function(er_results, sf_results, col_) {
+    data.frame(val = c(map_dbl(er_results,
+                            \(x) x[[col_]]),map_dbl(sf_results,
+                            \(x) x[[col_]])),
+               cat = c(rep("ER", length(er_results)), rep("SF", length(er_results)))
+               )
+}
+ggplot(data = combine2(er_results, sf_results, "comp_inc"), aes(x = cat, y = val)) +
+    geom_boxplot() + ggtitle("comp_inc")
+ggplot(data = combine2(er_results, sf_results, "dist_inc"), aes(x = cat, y = val)) +
+    geom_boxplot() + ggtitle("dist_inc")
+ggplot(data = combine2(er_results, sf_results, "max_comp_dec"), aes(x = cat, y = val)) +
+    geom_boxplot() + ggtitle("max_comp_inc")
+
+
+res <- data.frame(
+    er_ori = c(degree_distribution(g_er), rep(0, 100 - length(degree_distribution(g_er)))),
+    sf_ori = c(degree_distribution(g_sf), rep(0, 100 - length(degree_distribution(g_sf)))),
+    er = Reduce("+", map(er_results, \(x) c(
+        x$dd, rep(0, 100 - length(x$dd))
+    ))) / length(er_results),
+    sf = Reduce("+", map(sf_results, \(x) c(
+        x$dd, rep(0, 100 - length(x$dd))
+    ))) / length(sf_results),
+    x = 1:100
+)
+
+ggplot(res[1:50,], aes(x = x)) +
+    geom_line(aes(y = er, color = "Random failures")) + 
+    geom_line(aes(y = er_ori, color = "Original")) + 
+    ggtitle("ER")
+
+ggplot(res[1:50,], aes(x = x)) +
+    geom_line(aes(y = sf, color = "Random failures")) + 
+    geom_line(aes(y = sf_ori, color = "Original")) + 
+    ggtitle("SF")
+
+```
+
+# 7.19 
+
+More robust for these threats should be ER model since it has no outstanding vertices, in case of SF 
+attack may be aimed on big vertex which will result in breaking many paths and may result in separating
+components.
