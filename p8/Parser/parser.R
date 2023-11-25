@@ -126,7 +126,7 @@ set_stop_type <- function(lines_numbers) {
     if (any(stri_detect(lines_numbers, regex = "[LN]"))) {
         return("A")
     }
-    if (any(stri_detect(lines_numbers, regex = "[S]"))) {
+    if (any(stri_detect(lines_numbers, regex = "[RS]"))) {
         return("K")
     }
     if (max(as.numeric(lines_numbers)) > 99) {
