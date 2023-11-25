@@ -1,10 +1,18 @@
 # R parser for public transport text data
 
-## How to load data?
+Data is also availabile in the `data` folder.
+
+## How to load the data?
 
 `
 text_file <- load_file("RA231125.TXT")
+`
+
+`
 stops <- get_stops(text_file)
+`
+
+`
 connections <- get_connections(text_file, stops)
 `
 
@@ -31,3 +39,10 @@ Table contains information about each connection between each consecutive stops
 - next_stop_id <int> - id of the next stop
 - travel_time <dbl> - time in minutes between mentioned stops 
 - stop_type <chr> - one of "A" (bus), "T" (tram), "K" (train), same as in Stops
+
+### Dependencies
+
+- data.table
+- utf8
+- stringi
+- purrr
