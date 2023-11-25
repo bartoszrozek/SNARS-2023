@@ -1,4 +1,13 @@
+list.of.packages <- c("utf8", "stringi", "data.table", "purrr")
+new.packages <-
+    list.of.packages[!(list.of.packages %in% installed.packages()[, "Package"])]
+if (length(new.packages))
+    install.packages(new.packages)
+
 library(utf8)
+library(stringi)
+library(data.table)
+
 
 load_file <- function(path_) {
     #this encoding is not working idk
@@ -14,8 +23,8 @@ get_stops <- function(text) {
     stop <- which(text == "#ZA")
     stops_ids <- text[(start + 2):(stop - 1)] |>
         trimws() |>
-        stringi::stri_replace_all_regex(pattern = "\\s{2,}", replacement = "|") |>
-        stringi::stri_replace(fixed = ",", replacement = "")
+        stri_replace_all_regex(pattern = "\\s{2,}", replacement = "|") |>
+        stri_replace(fixed = ",", replacement = "")
     stops_df <- fread(
         text = stops_ids,
         sep = "|",
@@ -26,16 +35,16 @@ get_stops <- function(text) {
     stop <- which(text == "#ZP")
     stops_text <- text[(start + 2):(stop - 2)]
     stops_idxs <-
-        stringi::stri_detect(stops_text, regex = "^[0-9]{6}") |> which()
+        stri_detect(stops_text, regex = "^[0-9]{6}") |> which()
     stop_types <-
-        stringi::stri_extract_all(stops_text[stops_idxs + 1], regex = "[L-NS]*\\d+") |>
+        stri_extract_all(stops_text[stops_idxs + 1], regex = "[L-NS]*\\d+") |>
         purrr::map_chr(\(numbers) set_stop_type(numbers))
     stops <-
-        stringi::stri_replace_all_regex(stops_text[stops_idxs], 
-                                        pattern = "\\s{2,}", replacement = "|") |>
-        stringi::stri_replace_all(fixed = "Kier.: ", "") |>
-        stringi::stri_replace_all(fixed = "Y= ", "") |>
-        stringi::stri_replace_all(fixed = "X= ", "") |>
+        stri_replace_all_regex(stops_text[stops_idxs],
+                               pattern = "\\s{2,}", replacement = "|") |>
+        stri_replace_all(fixed = "Kier.: ", "") |>
+        stri_replace_all(fixed = "Y= ", "") |>
+        stri_replace_all(fixed = "X= ", "") |>
         na.omit()
     connections_df <- fread(
         text = stops,
@@ -50,25 +59,23 @@ get_stops <- function(text) {
                                            y = as.numeric(y),
                                            x = as.numeric(x))])
     
-    stops_df <- merge(stops_df, connections_df, 
+    stops_df <- merge(stops_df, connections_df,
                       by = "id")
-    stops_df[, `:=`(
-        name = changeBuggedEncoding(name),
-        id = NULL
-    )]
+    stops_df[, `:=`(name = changeBuggedEncoding(name),
+                    id = NULL)]
     setnames(stops_df, "id_full", "id")
-    stops_df <- stops_df |> 
+    stops_df <- stops_df |>
         #make life simplier
         na.omit()
     return(stops_df)
 }
 
 get_connections <- function(text, stops_df = NULL) {
-    if (is.null(stops_df)){
+    if (is.null(stops_df)) {
         stops_df <- get_stops(text)
     }
     courses_idx <-
-        stringi::stri_detect(text, regex = "^\\s*[A-z]*-[A-z]*\\d*/[A-z]*/\\d*.\\d*") |> which()
+        stri_detect(text, regex = "^\\s*[A-z]*-[A-z]*\\d*/[A-z]*/\\d*.\\d*") |> which()
     courses <- fread(
         text = text[courses_idx],
         fill = T,
@@ -82,9 +89,14 @@ get_connections <- function(text, stops_df = NULL) {
     ), by = course_id]
     #it is the final stop, no connection here
     courses[stop_type != "P"]
-    courses[,stop_type := NULL]
-    courses <- merge(courses, unique(stops_df[,.(id, stop_type)]), 
-                     by.x = "stop_id", by.y = "id", all.x = T) |> 
+    courses[, stop_type := NULL]
+    courses <- merge(
+        courses,
+        unique(stops_df[, .(id, stop_type)]),
+        by.x = "stop_id",
+        by.y = "id",
+        all.x = T
+    ) |>
         #make life simplier
         na.omit()
     return(courses)
@@ -93,17 +105,17 @@ get_connections <- function(text, stops_df = NULL) {
 
 changeBuggedEncoding <- function(string_) {
     string_ |>
-        stringi::stri_replace_all(fixed = "\\xb9", "ą") |>
-        stringi::stri_replace_all(fixed = "\\xb3", "ł") |>
-        stringi::stri_replace_all(fixed = "\\x8c", "Ś") |>
-        stringi::stri_replace_all(fixed = "\\x9c", "ś") |>
-        stringi::stri_replace_all(fixed = "\\xf1", "ń") |>
-        stringi::stri_replace_all(fixed = "\\xe6", "ć") |>
-        stringi::stri_replace_all(fixed = "\\xea", "ę") |>
-        stringi::stri_replace_all(fixed = "\\xa3", "Ł") |>
-        stringi::stri_replace_all(fixed = "\\xf3", "ó") |>
-        stringi::stri_replace_all(fixed = "\\xaf", "Ż") |>
-        stringi::stri_replace_all(fixed = "\\xbf", "ż")
+        stri_replace_all(fixed = "\\xb9", "ą") |>
+        stri_replace_all(fixed = "\\xb3", "ł") |>
+        stri_replace_all(fixed = "\\x8c", "Ś") |>
+        stri_replace_all(fixed = "\\x9c", "ś") |>
+        stri_replace_all(fixed = "\\xf1", "ń") |>
+        stri_replace_all(fixed = "\\xe6", "ć") |>
+        stri_replace_all(fixed = "\\xea", "ę") |>
+        stri_replace_all(fixed = "\\xa3", "Ł") |>
+        stri_replace_all(fixed = "\\xf3", "ó") |>
+        stri_replace_all(fixed = "\\xaf", "Ż") |>
+        stri_replace_all(fixed = "\\xbf", "ż")
 }
 
 set_stop_type <- function(lines_numbers) {
@@ -111,10 +123,10 @@ set_stop_type <- function(lines_numbers) {
         return(NA)
     }
     lines_numbers <- lines_numbers[-1]
-    if (any(stringi::stri_detect(lines_numbers, regex = "[LN]"))) {
+    if (any(stri_detect(lines_numbers, regex = "[LN]"))) {
         return("A")
     }
-    if (any(stringi::stri_detect(lines_numbers, regex = "[S]"))) {
+    if (any(stri_detect(lines_numbers, regex = "[S]"))) {
         return("K")
     }
     if (max(as.numeric(lines_numbers)) > 99) {
