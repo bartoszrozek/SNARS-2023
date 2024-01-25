@@ -1,0 +1,73 @@
+---
+title: "Social Networks and System Recomendations"
+subtitle: "Project 9"
+author: "Bartosz Rożek"
+date: last-modified
+date-format: "DD-MM-YYYY"
+editor: visual
+title-block-banner: "#e8e6ef"
+page-layout: article
+css: ../Styles/styles.css
+format: 
+  html:
+    toc: true
+    smooth-scroll: true
+    embed-resources: true
+    fontcolor: black
+    toc-location: right
+    toc-title: Summary
+    toc-depth: 3
+    number-sections: true
+    number-depth: 4
+    code-fold: false
+    code-summary: "Code"
+tbl-cap-location: bottom
+---
+
+```{r message=F}
+library(ggplot2)
+library(igraph)
+```
+
+```{r}
+
+nodes <-
+    read.csv("../p2/Data files/Dataset1-Media-Example-NODES.csv")
+edges <-
+    read.csv("../p2/Data files/Dataset1-Media-Example-EDGES.csv")
+
+g <- graph_from_data_frame(d = edges,
+                           vertices = nodes,
+                           directed = F)
+am <- (as.matrix(as_adjacency_matrix(g)) == T) * 1
+diag(am) <- 0
+g <- graph_from_adjacency_matrix(am, mode = "undirected")
+mo <- am/colSums(am)
+
+```
+
+$$
+\pi^T=\pi^TP
+$$
+
+# Exercise 2
+
+```{r}
+
+r <- eigen(mo)
+rvec <- r$vectors
+# left eigenvectors are the inverse of the right eigenvectors
+lvec <- MASS::ginv(r$vectors)
+pi_eig<-lvec[1,]/sum(lvec[1,])
+pi_eig
+
+```
+
+# Exercise 3
+
+```{r}
+library(expm)
+pi_sim <- (mo %^% 100)[1,]
+names(pi_sim) <- NULL
+pi_sim
+```

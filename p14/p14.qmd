@@ -1,0 +1,345 @@
+---
+title: "Social Networks and System Recomendations"
+subtitle: "Final project: Food recipes"
+author: "Bartosz Rożek"
+date: last-modified
+date-format: "DD-MM-YYYY"
+editor: visual
+title-block-banner: "#e8e6ef"
+page-layout: article
+css: ../Styles/styles.css
+format: 
+  html:
+    toc: true
+    smooth-scroll: true
+    embed-resources: true
+    fontcolor: black
+    toc-location: right
+    toc-title: Summary
+    toc-depth: 3
+    number-sections: true
+    number-depth: 4
+    code-fold: false
+    code-summary: "Code"
+tbl-cap-location: bottom
+---
+
+```{r message=F}
+library(ggplot2)
+library(data.table)
+library(forcats)
+library(recommenderlab)
+library(arules)
+library(purrr)
+library(knitr)
+```
+
+# Data
+
+## Description
+
+The data is taken from Kaggle - https://www.kaggle.com/datasets/irkaal/foodcom-recipes-and-reviews/. It contains both recipes and their reviews, but for this exercise I considered only recipes and especially focused on their ingredients.
+
+According to Kaggle: *The recipes dataset contains 522,517 recipes from 312 different categories. This dataset provides information about each recipe like cooking times, servings, ingredients, nutrition, instructions, and more. The reviews dataset contains 1,401,982 reviews from 271,907 different users. This dataset provides information about the author, rating, review text, and more.*
+
+## Preprocessing
+
+To limit the dataset to only the most valuable recipes and additionally not make the computer explode, the following steps were made:
+
+1.  Drop the ingredients without any ingredients assigned
+2.  Select only recipes with number of reviews larger than the data set's mean. Since the data is coming from open website, this step allows to select only popular and tastefull recipes.
+3.  Transform ingredients names by dropping words such as "fresh", "small", "prepared".
+4.  Select only recipes that have ingredients which appears more than 10 times in the data set. 4 and a half. Manually correct ingredients names.
+
+After that, the ingredients were put into columns making each column a indicator whether given ingredient appears in the recipe.
+
+Finally, the following columns were selected:
+
+-   RecipeId
+-   AuthorId
+-   RecipeCategory
+-   RecipeIngredientParts
+-   no_ingredients
+-   columns with ingredients
+
+## EDA
+
+```{r cache=TRUE}
+data_frame <- fread("formatted_table.csv")
+data_frame[, dill  := NULL]
+data_frame[, lobster  := NULL]
+data_frame[, AuthorId := as.character(AuthorId)]
+
+```
+
+```{r cache=TRUE}
+popular_categories <- names(table(data_frame$RecipeCategory)[table(data_frame$RecipeCategory) > 150])
+
+ggplot(data_frame[RecipeCategory %in% popular_categories,], aes(x = fct_infreq(RecipeCategory))) +
+    geom_bar() +
+    xlab("Recipe category") +
+    ylab("Count") +
+    ggtitle("Most popular categories") +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+
+```
+
+```{r cache=TRUE}
+authors <- table(data_frame$AuthorId) |> table()
+authors <- data.frame(n_recipes = as.numeric(names(authors)), count = as.numeric(authors))
+ggplot(authors, aes(x = n_recipes, y = count)) +
+    geom_col() +
+    xlab("Recipes added") +
+    ylab("Users count") + 
+    ggtitle("Recipes per user distribution") +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+
+```
+
+```{r cache=TRUE}
+ingredients <- table(data_frame$no_ingredients)
+ingredients <- data.frame(n_recipes = as.numeric(names(ingredients)), count = as.numeric(ingredients))
+ggplot(ingredients, aes(x = n_recipes, y = count)) +
+    geom_col() +
+    xlab("Recipes") +
+    ylab("Number of ingredients") + 
+    ggtitle("Ingredients per recipe distribution") +
+    theme_minimal()
+
+```
+
+```{r cache=TRUE}
+ingredients_cols <- colnames(data_frame)[7:ncol(data_frame)]
+ingredients <- data_frame[,..ingredients_cols]
+ingredients <- colSums(ingredients)
+ingredients_table <- ingredients |> table()
+ingredients_dist <- data.frame(how_many = as.numeric(names(ingredients_table)), count = as.numeric(ingredients_table))
+
+ggplot(ingredients_dist, aes(x = how_many, y = count)) +
+    geom_col() +
+    xlab("Number of recipes") +
+    ylab("Number ingredients") + 
+    ggtitle("Ingredients in recipes") +
+    theme_minimal()
+
+ggplot(ingredients_dist[ingredients_dist$how_many < 1000,], aes(x = how_many, y = count)) +
+    geom_col() +
+    xlab("Number of recipes") +
+    ylab("Number ingredients") + 
+    theme_minimal()
+
+```
+
+```{r cache=TRUE}
+ingredients_popular <- ingredients[ingredients > quantile(ingredients,0.95)]
+ingredients_popular <- data.frame(ingredient = names(ingredients_popular), 
+                                  count = as.numeric(ingredients_popular))
+ingredients_popular <- ingredients_popular[order(ingredients_popular$count, decreasing = TRUE),]
+ggplot(ingredients_popular, aes(x = reorder(ingredient, -count), y = count)) +
+    geom_col() +
+    xlab("Ingredient") +
+    ylab("Number of occurences in recipes") + 
+    ggtitle("Most popular ingredients") +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+
+```
+
+# Model
+
+For the model I have used three different approaches:
+
+-   UBCF
+-   IBCF
+
+Implemented for the binary matrix.
+
+## Training
+
+Statistics used in training:
+
+-   train-test split 80/20
+-   items_per_test_user_keep = 3
+
+```{r cache=TRUE}
+ingredient_matrix <- data_frame[,..ingredients_cols]
+ingredient_matrix <- as.matrix(ingredient_matrix)
+dimnames(ingredient_matrix) <- list(recipe = data_frame[["Name"]], ingredients = colnames(ingredient_matrix))
+
+ingredient_matrix <- as(ingredient_matrix, "binaryRatingMatrix")
+
+train_proportion <- 0.8
+items_per_test_user_keep <- 3
+good_threshold <- 3
+
+model_train_scheme <- ingredient_matrix |> 
+    evaluationScheme(method = 'split', # single train/test split
+                     train = train_proportion, # proportion of rows to train.
+                     given = items_per_test_user_keep, # shouldn't keep n rec. items > min(rowCounts(movie_r))
+                     k = 1)
+
+model_params <- list(method = "cosine",
+                     nn = 100, # find each user's 10 most similar users.
+                     sample = FALSE, # already did this.
+                     normalize = "center")
+
+models <- list()
+
+for (method in c("UBCF", "IBCF")) {
+    model <- getData(model_train_scheme, "train") |>  
+        Recommender(method = method)
+
+    model_pred <- predict(model, getData(model_train_scheme, "known")[1:1000], 
+                          blocksize = 2000,
+                          type="topNList", n = 10)
+    test_error <- calcPredictionAccuracy(model_pred, 
+                                         getData(model_train_scheme, "unknown")[1:1000],
+                                         given = items_per_test_user_keep)
+    models[[method]] <- list(model = model, results = test_error)
+    
+}
+
+```
+
+## Results
+
+```{r warning=FALSE, message=FALSE }
+
+comp <- map2_df(models, names(models), \(model, model_name) {
+    df <- model$results |> t() |> as.data.frame()
+    df$Name <- as.character(model_name)
+    df <- cbind(Name = df[,ncol(df)], df[,-ncol(df)])
+    df
+})
+
+kable(comp)
+
+```
+
+As it can be observed, the model focused on items (ingredients in this case) performs better.
+
+# Ingredients replecement
+
+```{r cache=TRUE}
+
+map_popular <- map(ingredients_popular[,1], \(ingredient){
+    
+    recipes_containing <- copy(data_frame[get(ingredient) == TRUE])
+    comparison <- map(c(F,T), \(drop_ing) {
+        if (drop_ing){
+            recipes_containing[,(ingredient) := FALSE]   
+        }
+    
+        ingredient_matrix <- recipes_containing[,..ingredients_cols]
+        ingredient_matrix <- as.matrix(ingredient_matrix)
+        dimnames(ingredient_matrix) <- list(recipe = recipes_containing[["Name"]], ingredients = colnames(ingredient_matrix))
+        
+        ingredient_matrix <- as(ingredient_matrix, "binaryRatingMatrix")
+        
+        model_pred <- predict(model, ingredient_matrix, 
+                                  blocksize = 2000,
+                                  type="topNList", n = 1)
+        substitues <- colnames(ingredient_matrix)[as.integer(model_pred@items)]
+        substitues
+    })
+    df <- data.frame(addition = comparison[[2]],
+               replacement = comparison[[1]])
+    
+    if (sum((df$addition != ingredient) & (df$addition != df$replacement), na.rm = T) == 0) {
+        replacements <- data.frame()
+    } else {
+        replacements <- df[(df$addition != ingredient) & (df$addition != df$replacement), "replacement"] |> table()
+        replacements <- replacements[order(replacements, decreasing = T)]
+        replacements <- data.frame(removed = ingredient, 
+                               replacement = names(replacements), 
+                               share = round(as.integer(replacements)/sum(replacements), 5))
+    }
+    
+    
+    len <- nrow(df)
+    irreplaceability <- sum(df$addition == ingredient, na.rm = T)/len
+    replacement <- sum((df$addition != ingredient) & (df$addition != df$replacement), na.rm = T)/len
+    additional <- sum(df$addition == df$replacement, na.rm = T)/len
+    df_results <- data.frame(`Ingredient` = ingredient,
+                             `Additional ingredient` = additional,
+                             `Possible replacement` = replacement,
+                             `Irreplaceability` = irreplaceability,
+                             check.names = F)
+    list(results = df_results, replacements = replacements)
+
+})
+
+results_popular <- map_df(map_popular, \(x) {
+    x$results
+})
+
+replacement_popular <- map_df(map_popular, \(x) {
+    x$replacement
+}) |> as.data.table()
+
+```
+## Overall results
+
+```{r}
+df_boxplot <- map_df(2:4, \(col_idx) {
+    data.frame(Statistic = colnames(results_popular)[col_idx],
+               Value = results_popular[,col_idx])
+})
+ggplot(df_boxplot, aes(x = Statistic, y = Value)) +
+    geom_boxplot() +
+    ggtitle("Ingridient recommendations") +
+    theme_minimal()
+
+```
+
+Three statistics are obtained:
+
+- "Additional ingredient" - when deleting a ingredent does not change the proposed ingredient
+- "Irreplecability" - when the ingredient proposed is the same as originaly removed on
+- "Possible replacement" - when ingredient proposed without removing is different than the one after removing
+
+
+## Most popular replacements
+
+```{r}
+replacement_popular[,most_pop := max(share), by = removed]
+kable(replacement_popular[share == most_pop, .(removed, replacement, share)])
+```
+
+The list above shows most popular replacements for certain ingredients. Some of them (carrot -> salt) does not make any sense, but we can observe also some pretty interesting such as:
+
+- garlic -> onion
+- cinamon -> nutmeg
+- soy sauce -> ginger 
+
+## Irreplaceabile ingredients
+
+```{r}
+results_popular[order(results_popular$Irreplaceability, decreasing = T), 
+                ][1:5, c("Ingredient", "Irreplaceability")] |> kable() 
+```
+
+By the model, the most irreplaceabile ingredients are: flour, eggs and salt. That certainly makes sense.
+
+## Ingredients we easily replace
+
+```{r}
+
+results_popular[order(results_popular$`Possible replacement`, decreasing = T), 
+                ][1:5, c("Ingredient", "Possible replacement")] |> kable() 
+
+```
+
+The model states that cheddar cheese is the easiest to replace, which certainly makes sense. On the other hand there is water on the list, but this may be the result that some of the recipes treat it as an obvious ingredient. 
+
+## Not needed?
+
+```{r}
+
+results_popular[order(results_popular$`Additional ingredient`, decreasing = T), 
+                ][1:5, c("Ingredient", "Additional ingredient")] |> kable() 
+
+```
+
+The most "not needed" ingredient is the mayonnaise, which makes sense, as well as the rest of the list (maybe besides potatoes) - soy sauce, green onion, vanilla essence. 

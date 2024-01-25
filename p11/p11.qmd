@@ -1,0 +1,274 @@
+---
+title: "Social Networks and System Recomendations"
+subtitle: "Project 11"
+author: "Bartosz Rożek"
+date: last-modified
+date-format: "DD-MM-YYYY"
+editor: visual
+title-block-banner: "#e8e6ef"
+page-layout: article
+css: ../Styles/styles.css
+format: 
+  html:
+    toc: true
+    smooth-scroll: true
+    embed-resources: true
+    fontcolor: black
+    toc-location: right
+    toc-title: Summary
+    toc-depth: 3
+    number-sections: true
+    number-depth: 4
+    code-fold: false
+    code-summary: "Code"
+tbl-cap-location: bottom
+---
+
+```{r message=F}
+library(purrr)
+library(ggplot2)
+library(igraph)
+```
+
+```{r}
+
+er_init <- function(n, p){
+    er <- erdos.renyi.game(n, p)
+
+    V(er)$state <- 0
+    V(er)$state[1] <- 1
+    
+    return(er)
+}
+
+ba_init <- function(n){
+    g <- barabasi.game(n)
+
+    V(g)$state <- 0
+    V(g)$state[1] <- 1
+    
+    return(g)
+}
+
+simulate_epidemic <- function(g, beta_, gamma_, epochs, drug_proba = NULL){
+    n_infected <- rep(0, epochs)
+    di <- rep(0, epochs)
+    n <- length(V(g))
+    
+    k <- mean(degree(g))
+    
+    for (epoch in 1:epochs) {
+        
+        n_infected[epoch] <- sum(V(g)$state)
+        di[epoch] <- n_infected[epoch] * (beta_ * k * (n - n_infected[epoch]) - gamma_)
+        if (n_infected[epoch] == 0) break
+        
+        g_previous_state <- g
+        for (node in V(g)) {
+            if (V(g)[node] && runif(1) < gamma_) {
+                V(g)[node]$state <- 0
+            } else {
+                infected_neighbors <- sum(neighbors(g_previous_state, node)$state)
+                infection_proba <- 1 - (1 - beta_)**infected_neighbors
+                if (runif(1) < infection_proba) {
+                    V(g)[node]$state <- 1
+                }    
+            }
+            
+        }
+        
+        if (!is.null(drug_proba) && runif(1) < drug_proba) {
+            gamma_ <- gamma_ * (1 + runif(1)) 
+        }
+    
+    }
+    
+    results_df <- data.frame(epoch = 1:epochs,
+                             n_infected = n_infected,
+                             di = di)
+    
+    return(results_df)
+}
+
+sim <- function(n, g, beta_, gamma_, epochs, drug_proba = NULL) {
+    
+    k <- mean(degree(g))
+    lambda_c <- 1/(k * (n - 1))
+    lambda_c_sf <- (k)/(mean(degree(g)**2))
+    lambda_ <- beta_/gamma_ 
+    print(glue::glue("p: {p}\n beta: {beta_}\n gamma: {gamma_}\n lambda_c: {lambda_c_sf}\n lambda: {lambda_}"))
+    
+    results_df <- list()
+    for (i in 1:n) {
+        results_df[[i]] <- simulate_epidemic(g, beta_, gamma_, epochs, drug_proba)    
+    }
+    return(results_df)
+}
+
+plot_fda <- function(results_df, column) {
+    mat <- as.matrix(data.frame(map(results_df, \(df) {
+        df[column]
+    })))
+    colnames(mat) <- NULL
+    suppressWarnings(fda::fbplot(mat))
+    title(column)
+    
+}
+
+```
+
+
+# SIS for ER
+
+```{r}
+
+n <- 100
+p <- 0.1
+n_tries <- 10
+
+
+n <- 200
+epochs <- 50
+p <- 0.1
+betas <- c(0.05, 0.1, 0.3)
+gammas <- c(0.05, 0.1, 0.3)
+
+
+er <- er_init(n, p)
+
+for (beta_ in betas) {
+    for (gamma_ in gammas) {
+        
+        simulations_df <- sim(n_tries, er, beta_, gamma_, epochs)
+        plot_fda(simulations_df, "n_infected")
+        plot_fda(simulations_df, "di")
+    }
+}
+
+
+```
+
+# SIS for BA
+
+```{r}
+
+
+ba <- ba_init(n)
+
+for (beta_ in betas) {
+    for (gamma_ in gammas) {
+        
+        simulations_df <- sim(n_tries, ba, beta_, gamma_, epochs)
+        plot_fda(simulations_df, "n_infected")
+        plot_fda(simulations_df, "di")
+    }
+}
+
+
+
+```
+
+# SIS with drugs for BA
+
+```{r}
+
+ba <- ba_init(n)
+
+for (beta_ in betas) {
+    for (gamma_ in gammas) {
+        
+        simulations_df <- sim(n_tries, ba, beta_, gamma_, epochs, 0.1)
+        plot_fda(simulations_df, "n_infected")
+        plot_fda(simulations_df, "di")
+    }
+}
+
+
+
+```
+
+# Voters model with weights
+
+```{r}
+
+n <- 25
+
+ba_init_voting <- function(n){
+    g <- barabasi.game(n)
+
+    V(g)$state <- sample(c(-1,1), length(V(g)), replace = T)
+    
+    return(g)
+}
+
+simulate_voting <- function(g, epochs, renown = F){
+    
+    verdicts <- rep(0,epochs)
+    for (epoch in 1:epochs) {
+
+        g_previous_state <- g
+        for (node in V(g)) {
+            nbrs <- neighbors(g_previous_state, node)
+            if (renown) {
+                verdict <- sum(V(g_previous_state)[nbrs]$state) + 1 > 0
+
+            } else {
+                verdict <- sum(V(g_previous_state)[nbrs]$state) > 0
+            }
+            
+            V(g)[node]$state <- verdict * 2 - 1
+            verdicts[epoch] <- verdict
+        }
+
+    }
+    
+    
+    return(g)
+}
+
+plot_voters <- function(g){
+    V(g)$color <- ifelse(V(g)$state == 1, "red", "blue")
+    coords <- layout_with_graphopt(g)
+    plot(g, layout = coords)
+}
+
+epochs <- 3
+g_orig <- ba_init_voting(50)
+plot_voters(g_orig)
+g1 <- g_orig
+g1 <- simulate_voting(g1, epochs)
+plot_voters(g1)
+
+g2 <- g_orig
+g2 <- simulate_voting(g2, epochs, renown = T)
+plot_voters(g2)
+
+results <- data.frame()
+for (n in c(50, 100, 200, 300, 500)) {
+    for (i in 1:10) {
+        g_orig <- ba_init_voting(50)
+        g1 <- g_orig
+        g1 <- simulate_voting(g1, epochs)
+        g2 <- g_orig
+        g2 <- simulate_voting(g2, epochs, renown = T)
+        true_voters <- (sum(V(g1)$state == 1)) / (length(V(g1)))
+        true_voters_propaganda <-
+            (sum(V(g2)$state == 1)) / (length(V(g2)))
+        results <- rbind(
+            results,
+            data.frame(
+                n = n,
+                i = i,
+                normal = true_voters,
+                propaganda = true_voters_propaganda
+            )
+        )
+        
+    }
+}
+
+ggplot(results, aes(x = 1)) +
+    geom_boxplot(aes(y = normal, group = n, fill = "Without propaganda")) +
+    geom_boxplot(aes(y = propaganda, group = n, fill = "With propaganda"))
+
+```
